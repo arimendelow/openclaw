@@ -149,7 +149,9 @@ export function buildGatewayConnectionDetails(
 export async function callGateway<T = Record<string, unknown>>(
   opts: CallGatewayOptions,
 ): Promise<T> {
-  const timeoutMs = opts.timeoutMs ?? 10_000;
+  const timeoutMs =
+    typeof opts.timeoutMs === "number" && Number.isFinite(opts.timeoutMs) ? opts.timeoutMs : 10_000;
+  const safeTimerTimeoutMs = Math.max(1, Math.min(Math.floor(timeoutMs), 2_147_483_647));
   const config = opts.config ?? loadConfig();
   const isRemoteMode = config.gateway?.mode === "remote";
   const remote = isRemoteMode ? config.gateway?.remote : undefined;
@@ -292,7 +294,7 @@ export async function callGateway<T = Record<string, unknown>>(
       ignoreClose = true;
       client.stop();
       stop(new Error(formatTimeoutError()));
-    }, timeoutMs);
+    }, safeTimerTimeoutMs);
 
     client.start();
   });
