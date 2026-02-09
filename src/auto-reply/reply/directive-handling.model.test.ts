@@ -78,17 +78,21 @@ describe("/model chat UX", () => {
     });
 
     expect(nonFallbackReply?.text).toBe(
-      ["Current: anthropic/claude-opus-4-5", "", ...sharedSummaryLines].join("\n"),
+      [
+        "Current: anthropic/claude-opus-4-5",
+        "Default: anthropic/claude-opus-4-5",
+        "",
+        ...sharedSummaryLines,
+      ].join("\n"),
     );
     expect(nonFallbackReply?.text).not.toContain("Fallback active");
-    expect(nonFallbackReply?.text).not.toContain("Default:");
 
     expect(fallbackReply?.text).toBe(
       [
         "Current: openai/gpt-5.2",
+        "Default: anthropic/claude-opus-4-5",
         "",
         "Fallback active",
-        "Default: anthropic/claude-opus-4-5",
         "",
         ...sharedSummaryLines,
       ].join("\n"),
@@ -116,6 +120,7 @@ describe("/model chat UX", () => {
     expect(reply?.text).toBe(
       [
         "Current: anthropic/claude-opus-4-5",
+        "Default: anthropic/claude-opus-4-5",
         "",
         "Switch: /model <provider/model>",
         "Browse: /models (providers) or /models <provider> (models)",
@@ -163,6 +168,7 @@ describe("/model chat UX", () => {
     expect(nonFallbackReply?.text).toBe(
       [
         "Current: anthropic/claude-opus-4-5",
+        "Default: anthropic/claude-opus-4-5",
         "",
         "Tap below to browse models, or use:",
         "/model <provider/model> to switch",
@@ -171,14 +177,13 @@ describe("/model chat UX", () => {
     );
     expect(nonFallbackReply?.channelData).toEqual({ telegram: { buttons: telegramButtons } });
     expect(nonFallbackReply?.text).not.toContain("Fallback active");
-    expect(nonFallbackReply?.text).not.toContain("Default:");
 
     expect(fallbackReply?.text).toBe(
       [
         "Current: openai/gpt-5.2",
+        "Default: anthropic/claude-opus-4-5",
         "",
         "Fallback active",
-        "Default: anthropic/claude-opus-4-5",
         "",
         "Tap below to browse models, or use:",
         "/model <provider/model> to switch",
