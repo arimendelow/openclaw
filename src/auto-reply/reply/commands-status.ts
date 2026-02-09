@@ -213,6 +213,10 @@ export async function buildStatusReply(params: {
     config: cfg,
     agent: {
       ...agentDefaults,
+      model: {
+        ...agentDefaults.model,
+        primary: `${provider}/${model}`,
+      },
       contextTokens,
       thinkingDefault: agentDefaults.thinkingDefault,
       verboseDefault: agentDefaults.verboseDefault,
@@ -239,8 +243,6 @@ export async function buildStatusReply(params: {
     subagentsLine,
     mediaDecisions: params.mediaDecisions,
     includeTranscriptUsage: false,
-    runtimeProvider: provider,
-    runtimeModel: model,
   });
 
   return { text: statusText };

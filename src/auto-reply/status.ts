@@ -71,8 +71,6 @@ type StatusArgs = {
   mediaDecisions?: MediaUnderstandingDecision[];
   subagentsLine?: string;
   includeTranscriptUsage?: boolean;
-  runtimeProvider?: string;
-  runtimeModel?: string;
   now?: number;
 };
 
@@ -320,17 +318,8 @@ export function buildStatusMessage(args: StatusArgs): string {
     defaultProvider: DEFAULT_PROVIDER,
     defaultModel: DEFAULT_MODEL,
   });
-  const defaultProvider = resolved.provider ?? DEFAULT_PROVIDER;
-  const defaultModel = resolved.model ?? DEFAULT_MODEL;
-
-  const selectedProvider = entry?.providerOverride ?? defaultProvider;
-  const selectedModel = entry?.modelOverride ?? defaultModel;
-  const runtimeProvider = args.runtimeProvider?.trim() || entry?.modelProvider?.trim() || undefined;
-  const runtimeModel = args.runtimeModel?.trim() || entry?.model?.trim() || undefined;
-
-  const provider = runtimeProvider ?? selectedProvider;
-  let model = runtimeModel ?? selectedModel;
-
+  const provider = entry?.providerOverride ?? resolved.provider ?? DEFAULT_PROVIDER;
+  let model = entry?.modelOverride ?? resolved.model ?? DEFAULT_MODEL;
   let contextTokens =
     entry?.contextTokens ??
     args.agent?.contextTokens ??
@@ -449,14 +438,8 @@ export function buildStatusMessage(args: StatusArgs): string {
   const costLabel = showCost && hasUsage ? formatUsd(cost) : undefined;
 
   const modelLabel = model ? `${provider}/${model}` : "unknown";
-  const defaultModelLabel = `${defaultProvider}/${defaultModel}`;
   const authLabel = authLabelValue ? ` · 🔑 ${authLabelValue}` : "";
-  const modelLine = `🧠 Runtime model: ${modelLabel}${authLabel}`;
-  const defaultModelLine = `🧩 Configured default: ${defaultModelLabel}`;
-  const fallbackLine =
-    modelLabel !== defaultModelLabel
-      ? `↪️ Fallback active: using ${modelLabel} instead of default ${defaultModelLabel}`
-      : null;
+  const modelLine = `🧠 Model: ${modelLabel}${authLabel}`;
   const commit = resolveCommitHash();
   const versionLine = `🦞 OpenClaw ${VERSION}${commit ? ` (${commit})` : ""}`;
   const usagePair = formatUsagePair(inputTokens, outputTokens);
@@ -470,8 +453,6 @@ export function buildStatusMessage(args: StatusArgs): string {
     versionLine,
     args.timeLine,
     modelLine,
-    defaultModelLine,
-    fallbackLine,
     usageCostLine,
     `📚 ${contextLine}`,
     mediaLine,
