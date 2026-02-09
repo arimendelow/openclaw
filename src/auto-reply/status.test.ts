@@ -72,7 +72,8 @@ describe("buildStatusMessage", () => {
     const normalized = normalizeTestText(text);
 
     expect(normalized).toContain("OpenClaw");
-    expect(normalized).toContain("Model: anthropic/pi:opus");
+    expect(normalized).toContain("Runtime model: anthropic/pi:opus");
+    expect(normalized).toContain("Configured default: anthropic/pi:opus");
     expect(normalized).toContain("api-key");
     expect(normalized).toContain("Tokens: 1.2k in / 800 out");
     expect(normalized).toContain("Cost: $0.0020");
@@ -207,7 +208,7 @@ describe("buildStatusMessage", () => {
     expect(optionsLine).not.toContain("elevated");
   });
 
-  it("prefers model overrides over last-run model", () => {
+  it("prefers last-run runtime model over configured override", () => {
     const text = buildStatusMessage({
       agent: {
         model: "anthropic/claude-opus-4-5",
@@ -228,7 +229,7 @@ describe("buildStatusMessage", () => {
       modelAuth: "api-key",
     });
 
-    expect(normalizeTestText(text)).toContain("Model: openai/gpt-4.1-mini");
+    expect(normalizeTestText(text)).toContain("Runtime model: anthropic/claude-haiku-4-5");
   });
 
   it("keeps provider prefix from configured model", () => {
@@ -241,7 +242,49 @@ describe("buildStatusMessage", () => {
       modelAuth: "api-key",
     });
 
-    expect(normalizeTestText(text)).toContain("Model: google-antigravity/claude-sonnet-4-5");
+    expect(normalizeTestText(text)).toContain(
+      "Runtime model: google-antigravity/claude-sonnet-4-5",
+    );
+  });
+
+  it("omits fallback line when runtime model matches configured default", () => {
+    const text = buildStatusMessage({
+      agent: { model: "anthropic/claude-opus-4-6" },
+      sessionEntry: {
+        sessionId: "same-1",
+        updatedAt: 0,
+        modelProvider: "anthropic",
+        model: "claude-opus-4-6",
+      },
+      sessionScope: "per-sender",
+      queue: { mode: "collect", depth: 0 },
+    });
+
+    const normalized = normalizeTestText(text);
+    expect(normalized).toContain("Runtime model: anthropic/claude-opus-4-6");
+    expect(normalized).toContain("Configured default: anthropic/claude-opus-4-6");
+    expect(normalized).not.toContain("Fallback active:");
+  });
+
+  it("shows fallback line when runtime model differs from configured default", () => {
+    const text = buildStatusMessage({
+      agent: { model: "anthropic/claude-opus-4-6" },
+      sessionEntry: {
+        sessionId: "fallback-1",
+        updatedAt: 0,
+      },
+      runtimeProvider: "openai-codex",
+      runtimeModel: "gpt-5.3-codex",
+      sessionScope: "per-sender",
+      queue: { mode: "collect", depth: 0 },
+    });
+
+    const normalized = normalizeTestText(text);
+    expect(normalized).toContain("Runtime model: openai-codex/gpt-5.3-codex");
+    expect(normalized).toContain("Configured default: anthropic/claude-opus-4-6");
+    expect(normalized).toContain(
+      "Fallback active: using openai-codex/gpt-5.3-codex instead of default anthropic/claude-opus-4-6",
+    );
   });
 
   it("handles missing agent config gracefully", () => {
@@ -253,7 +296,8 @@ describe("buildStatusMessage", () => {
     });
 
     const normalized = normalizeTestText(text);
-    expect(normalized).toContain("Model:");
+    expect(normalized).toContain("Runtime model:");
+    expect(normalized).toContain("Configured default:");
     expect(normalized).toContain("Context:");
     expect(normalized).toContain("Queue: collect");
   });
