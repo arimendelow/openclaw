@@ -223,12 +223,11 @@ export async function maybeHandleModelDirectiveInfo(params: {
 
     if (isTelegram) {
       const buttons = buildBrowseProvidersButton();
-      const fallbackLines = fallbackActive
-        ? ["Fallback active", `Default: ${defaultLabel}`, ""]
-        : [];
+      const fallbackLines = fallbackActive ? ["Fallback active", ""] : [];
       return {
         text: [
           `Current: ${current}`,
+          `Default: ${defaultLabel}`,
           "",
           ...fallbackLines,
           "Tap below to browse models, or use:",
@@ -239,25 +238,13 @@ export async function maybeHandleModelDirectiveInfo(params: {
       };
     }
 
-    if (fallbackActive) {
-      return {
-        text: [
-          `Current: ${current}`,
-          "",
-          "Fallback active",
-          `Default: ${defaultLabel}`,
-          "",
-          "Switch: /model <provider/model>",
-          "Browse: /models (providers) or /models <provider> (models)",
-          "More: /model status",
-        ].join("\n"),
-      };
-    }
-
+    const fallbackLines = fallbackActive ? ["Fallback active", ""] : [];
     return {
       text: [
         `Current: ${current}`,
+        `Default: ${defaultLabel}`,
         "",
+        ...fallbackLines,
         "Switch: /model <provider/model>",
         "Browse: /models (providers) or /models <provider> (models)",
         "More: /model status",
