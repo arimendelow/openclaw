@@ -19,6 +19,8 @@ export type IMessageSendOpts = {
   timeoutMs?: number;
   chatId?: number;
   client?: IMessageRpcClient;
+  /** BlueBubbles message GUID to reply to (sends via BB HTTP API). */
+  replyToGuid?: string;
 };
 
 export type IMessageSendResult = {
@@ -53,6 +55,48 @@ async function resolveAttachment(
   return { path: saved.path, contentType: saved.contentType };
 }
 
+/**
+ * Send a reply via BlueBubbles HTTP API (selectedMessageGuid).
+ * Falls through to normal send if BB config is missing.
+ */
+async function sendViaBlueBubblesReply(
+  chatGuid: string,
+  text: string,
+  selectedMessageGuid: string,
+  cfg: ReturnType<typeof loadConfig>,
+): Promise<IMessageSendResult | null> {
+  const bbCfg = cfg.channels?.bluebubbles;
+  const serverUrl = (bbCfg as Record<string, unknown> | undefined)?.serverUrl as string | undefined;
+  const password = (bbCfg as Record<string, unknown> | undefined)?.password as string | undefined;
+  if (!serverUrl || !password) {
+    return null;
+  }
+
+  const url = `${serverUrl.replace(/\/$/, "")}/api/v1/message/text?password=${encodeURIComponent(password)}`;
+  const body = {
+    chatGuid,
+    message: text,
+    selectedMessageGuid,
+    method: "private-api",
+  };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    console.warn(`[bluebubbles-reply] HTTP ${res.status}: ${await res.text().catch(() => "")}`);
+    return null;
+  }
+
+  const json = (await res.json()) as Record<string, unknown>;
+  const data = json.data as Record<string, unknown> | undefined;
+  const guid = data?.guid as string | undefined;
+  return { messageId: guid ?? "ok" };
+}
+
 export async function sendMessageIMessage(
   to: string,
   text: string,
@@ -66,6 +110,25 @@ export async function sendMessageIMessage(
   const cliPath = opts.cliPath?.trim() || account.config.cliPath?.trim() || "imsg";
   const dbPath = opts.dbPath?.trim() || account.config.dbPath?.trim();
   const target = parseIMessageTarget(opts.chatId ? formatIMessageChatTarget(opts.chatId) : to);
+
+  // If replyToGuid is set, try sending via BlueBubbles HTTP API for threading
+  if (opts.replyToGuid && target.kind === "chat_guid") {
+    let message = text ?? "";
+    if (message.trim()) {
+      const tableMode = resolveMarkdownTableMode({
+        cfg,
+        channel: "imessage",
+        accountId: account.accountId,
+      });
+      message = convertMarkdownTables(message, tableMode);
+    }
+    const bbResult = await sendViaBlueBubblesReply(target.chatGuid, message, opts.replyToGuid, cfg);
+    if (bbResult) {
+      return bbResult;
+    }
+    // Fall through to normal send if BB reply failed
+  }
+
   const service =
     opts.service ??
     (target.kind === "handle" ? target.service : undefined) ??

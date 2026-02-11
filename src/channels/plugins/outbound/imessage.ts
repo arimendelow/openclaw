@@ -8,7 +8,7 @@ export const imessageOutbound: ChannelOutboundAdapter = {
   chunker: chunkText,
   chunkerMode: "text",
   textChunkLimit: 4000,
-  sendText: async ({ cfg, to, text, accountId, deps }) => {
+  sendText: async ({ cfg, to, text, accountId, deps, replyToId }) => {
     const send = deps?.sendIMessage ?? sendMessageIMessage;
     const maxBytes = resolveChannelMediaMaxBytes({
       cfg,
@@ -20,10 +20,11 @@ export const imessageOutbound: ChannelOutboundAdapter = {
     const result = await send(to, text, {
       maxBytes,
       accountId: accountId ?? undefined,
+      replyToGuid: replyToId ?? undefined,
     });
     return { channel: "imessage", ...result };
   },
-  sendMedia: async ({ cfg, to, text, mediaUrl, accountId, deps }) => {
+  sendMedia: async ({ cfg, to, text, mediaUrl, accountId, deps, replyToId }) => {
     const send = deps?.sendIMessage ?? sendMessageIMessage;
     const maxBytes = resolveChannelMediaMaxBytes({
       cfg,
@@ -36,6 +37,7 @@ export const imessageOutbound: ChannelOutboundAdapter = {
       mediaUrl,
       maxBytes,
       accountId: accountId ?? undefined,
+      replyToGuid: replyToId ?? undefined,
     });
     return { channel: "imessage", ...result };
   },
