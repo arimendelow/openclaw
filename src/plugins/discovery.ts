@@ -151,7 +151,19 @@ function discoverInDirectory(params: {
         workspaceDir: params.workspaceDir,
       });
     }
-    if (!entry.isDirectory()) {
+
+    // Check if entry is a directory (or a symlink pointing to a directory)
+    let isDir = entry.isDirectory();
+    if (!isDir && entry.isSymbolicLink()) {
+      try {
+        const stat = fs.statSync(fullPath);
+        isDir = stat.isDirectory();
+      } catch {
+        // If stat fails (e.g., broken symlink), skip it
+        continue;
+      }
+    }
+    if (!isDir) {
       continue;
     }
 
