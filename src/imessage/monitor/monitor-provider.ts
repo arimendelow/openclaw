@@ -576,6 +576,7 @@ export async function monitorIMessageProvider(opts: MonitorIMessageOpts = {}): P
       Provider: "imessage",
       Surface: "imessage",
       MessageSid: message.id ? String(message.id) : undefined,
+      MessageSidFull: message.guid ?? undefined,
       ReplyToId: replyContext?.id,
       ReplyToBody: replyContext?.body,
       ReplyToSender: replyContext?.sender,
