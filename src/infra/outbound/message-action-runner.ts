@@ -19,6 +19,7 @@ import {
 import { parseReplyDirectives } from "../../auto-reply/reply/reply-directives.js";
 import { dispatchChannelMessageAction } from "../../channels/plugins/message-actions.js";
 import { extensionForMime } from "../../media/mime.js";
+import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { parseSlackTarget } from "../../slack/targets.js";
 import { parseTelegramTarget } from "../../telegram/targets.js";
 import {
@@ -848,6 +849,35 @@ async function handleSendAction(ctx: ResolvedActionContext): Promise<MessageActi
   const mirrorMediaUrls =
     mergedMediaUrls.length > 0 ? mergedMediaUrls : mediaUrl ? [mediaUrl] : undefined;
   throwIfAborted(abortSignal);
+
+  // Run message_sending plugin hook (allows plugins to modify content or cancel)
+  const hookRunner = getGlobalHookRunner();
+  let finalMessage = message;
+  if (hookRunner?.hasHooks("message_sending")) {
+    try {
+      const hookResult = await hookRunner.runMessageSending(
+        { to, content: message, metadata: {} },
+        { conversationId: to, channelId: channel },
+      );
+      if (hookResult?.cancel) {
+        return {
+          kind: "send" as const,
+          channel,
+          action: "send" as const,
+          to,
+          handledBy: "core" as const,
+          payload: { cancelled: true },
+          dryRun,
+        };
+      }
+      if (hookResult?.content) {
+        finalMessage = hookResult.content;
+      }
+    } catch {
+      // fail-open: if hook errors, proceed with original message
+    }
+  }
+
   const send = await executeSendAction({
     ctx: {
       cfg,
@@ -863,14 +893,14 @@ async function handleSendAction(ctx: ResolvedActionContext): Promise<MessageActi
           ? {
               sessionKey: outboundRoute.sessionKey,
               agentId,
-              text: message,
+              text: finalMessage,
               mediaUrls: mirrorMediaUrls,
             }
           : undefined,
       abortSignal,
     },
     to,
-    message,
+    message: finalMessage,
     mediaUrl: mediaUrl || undefined,
     mediaUrls: mergedMediaUrls.length ? mergedMediaUrls : undefined,
     gifPlayback,
