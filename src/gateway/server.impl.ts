@@ -41,6 +41,7 @@ import {
 import { scheduleGatewayUpdateCheck } from "../infra/update-startup.js";
 import { startDiagnosticHeartbeat, stopDiagnosticHeartbeat } from "../logging/diagnostic.js";
 import { createSubsystemLogger, runtimeForLogger } from "../logging/subsystem.js";
+import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { runOnboardingWizard } from "../wizard/onboarding.js";
 import { startGatewayConfigReloader } from "./config-reload.js";
 import { ExecApprovalManager } from "./exec-approval-manager.js";
@@ -351,6 +352,21 @@ export async function startGatewayServer(
     logHooks,
     logPlugins,
   });
+
+  // Wire gateway_start hook
+  const hookRunner = getGlobalHookRunner();
+  if (hookRunner) {
+    try {
+      await hookRunner.runGatewayStart(
+        { port },
+        {
+          /* gateway context */
+        },
+      );
+    } catch (err) {
+      log.warn(`gateway: gateway_start hook failed: ${String(err)}`);
+    }
+  }
   let bonjourStop: (() => Promise<void>) | null = null;
   const nodeRegistry = new NodeRegistry();
   const nodePresenceTimers = new Map<string, ReturnType<typeof setInterval>>();
