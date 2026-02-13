@@ -42,6 +42,7 @@ import { scheduleGatewayUpdateCheck } from "../infra/update-startup.js";
 import { startDiagnosticHeartbeat, stopDiagnosticHeartbeat } from "../logging/diagnostic.js";
 import { createSubsystemLogger, runtimeForLogger } from "../logging/subsystem.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
+import { reloadPlugins } from "../plugins/reloader.js";
 import { runOnboardingWizard } from "../wizard/onboarding.js";
 import { startGatewayConfigReloader } from "./config-reload.js";
 import { ExecApprovalManager } from "./exec-approval-manager.js";
@@ -636,6 +637,28 @@ export async function startGatewayServer(
     wss,
     httpServer,
     httpServers,
+  });
+
+  // SIGUSR2: hot-reload plugins without restarting the gateway
+  process.on("SIGUSR2", () => {
+    log.info("Plugin reload triggered via SIGUSR2");
+    try {
+      const freshCfg = loadConfig();
+      const result = reloadPlugins({
+        config: freshCfg,
+        workspaceDir: defaultWorkspaceDir,
+        coreGatewayHandlers,
+      });
+      if (result.ok) {
+        log.info(
+          `SIGUSR2 reload succeeded: ${result.pluginCount} plugin(s), ${result.hookCount} hook(s) in ${result.durationMs}ms`,
+        );
+      } else {
+        log.error(`SIGUSR2 reload failed: ${result.error}`);
+      }
+    } catch (err) {
+      log.error(`SIGUSR2 reload unexpected error: ${String(err)}`);
+    }
   });
 
   return {

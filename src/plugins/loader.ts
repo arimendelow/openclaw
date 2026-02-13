@@ -40,6 +40,37 @@ export type PluginLoadOptions = {
 
 const registryCache = new Map<string, PluginRegistry>();
 
+/**
+ * Clear all plugin caches so that the next `loadOpenClawPlugins` call
+ * performs a fresh discovery + load.  This clears:
+ *  1. The in-memory registry cache (this module)
+ *  2. Any `require.cache` entries under plugin directories
+ *  3. The global registry state singleton
+ */
+export function clearPluginCaches(opts?: { pluginSourcePaths?: string[] }): void {
+  // 1. Clear the loader's own registry cache
+  registryCache.clear();
+
+  // 2. Bust require.cache for plugin paths so jiti re-evaluates modules
+  if (opts?.pluginSourcePaths) {
+    for (const sourcePath of opts.pluginSourcePaths) {
+      const resolved = path.resolve(sourcePath);
+      for (const key of Object.keys(require.cache)) {
+        if (key.startsWith(resolved)) {
+          delete require.cache[key];
+        }
+      }
+    }
+  }
+
+  // 3. Reset global registry state so getActivePluginRegistry() returns fresh data
+  const REGISTRY_STATE = Symbol.for("openclaw.pluginRegistryState");
+  const globalState = globalThis as typeof globalThis & {
+    [key: symbol]: unknown;
+  };
+  delete globalState[REGISTRY_STATE];
+}
+
 const defaultLogger = () => createSubsystemLogger("plugins");
 
 const resolvePluginSdkAlias = (): string | null => {
