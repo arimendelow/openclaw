@@ -112,6 +112,8 @@ const hoisted = vi.hoisted(() => {
   let onHotReload: ((plan: unknown, nextConfig: unknown) => Promise<void>) | null = null;
   let onRestart: ((plan: unknown, nextConfig: unknown) => void) | null = null;
 
+  const reloadOpenClawPlugins = vi.fn();
+
   const startGatewayConfigReloader = vi.fn(
     (opts: { onHotReload: typeof onHotReload; onRestart: typeof onRestart }) => {
       onHotReload = opts.onHotReload;
@@ -134,6 +136,7 @@ const hoisted = vi.hoisted(() => {
     createChannelManager,
     startGatewayConfigReloader,
     reloaderStop,
+    reloadOpenClawPlugins,
     getOnHotReload: () => onHotReload,
     getOnRestart: () => onRestart,
   };
@@ -164,6 +167,10 @@ vi.mock("./config-reload.js", () => ({
   startGatewayConfigReloader: hoisted.startGatewayConfigReloader,
 }));
 
+vi.mock("../plugins/reloader.js", () => ({
+  reloadOpenClawPlugins: hoisted.reloadOpenClawPlugins,
+}));
+
 installGatewayTestHooks({ scope: "suite" });
 
 describe("gateway hot reload", () => {
@@ -172,6 +179,8 @@ describe("gateway hot reload", () => {
   let prevSkipProviders: string | undefined;
 
   beforeEach(() => {
+    vi.clearAllMocks();
+    hoisted.cronInstances.length = 0;
     prevSkipChannels = process.env.OPENCLAW_SKIP_CHANNELS;
     prevSkipGmail = process.env.OPENCLAW_SKIP_GMAIL_WATCHER;
     prevSkipProviders = process.env.OPENCLAW_SKIP_PROVIDERS;
@@ -196,6 +205,18 @@ describe("gateway hot reload", () => {
     } else {
       process.env.OPENCLAW_SKIP_PROVIDERS = prevSkipProviders;
     }
+  });
+
+  it("reloads plugins on SIGUSR2", async () => {
+    const port = await getFreePort();
+    const server = await startGatewayServer(port);
+
+    process.emit("SIGUSR2", "SIGUSR2");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(hoisted.reloadOpenClawPlugins).toHaveBeenCalledTimes(1);
+
+    await server.close();
   });
 
   it("applies hot reload actions and emits restart signal", async () => {

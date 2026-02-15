@@ -43,6 +43,10 @@ const registryCache = new Map<string, PluginRegistry>();
 
 const defaultLogger = () => createSubsystemLogger("plugins");
 
+export function clearPluginLoaderCache(): void {
+  registryCache.clear();
+}
+
 const resolvePluginSdkAliasFile = (params: {
   srcFile: string;
   distFile: string;

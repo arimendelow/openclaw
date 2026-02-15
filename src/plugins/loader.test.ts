@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { loadOpenClawPlugins } from "./loader.js";
+import { clearPluginLoaderCache, loadOpenClawPlugins } from "./loader.js";
 
 type TempPlugin = { dir: string; file: string; id: string };
 
@@ -456,6 +456,49 @@ describe("loadOpenClawPlugins", () => {
     expect(entry?.status).toBe("disabled");
   });
 
+  it("clears loader cache for subsequent reloads", () => {
+    process.env.OPENCLAW_BUNDLED_PLUGINS_DIR = "/nonexistent/bundled/plugins";
+    const plugin = writePlugin({
+      id: "cache-demo",
+      body: `export default { id: "cache-demo", register(api) { api.registerGatewayMethod("cache.v1", ({ respond }) => respond(true, { ok: true })); } };`,
+    });
+
+    const first = loadOpenClawPlugins({
+      workspaceDir: plugin.dir,
+      config: {
+        plugins: {
+          load: { paths: [plugin.file] },
+          allow: ["cache-demo"],
+        },
+      },
+    });
+
+    const second = loadOpenClawPlugins({
+      workspaceDir: plugin.dir,
+      config: {
+        plugins: {
+          load: { paths: [plugin.file] },
+          allow: ["cache-demo"],
+        },
+      },
+    });
+
+    expect(second).toBe(first);
+
+    clearPluginLoaderCache();
+
+    const third = loadOpenClawPlugins({
+      workspaceDir: plugin.dir,
+      config: {
+        plugins: {
+          load: { paths: [plugin.file] },
+          allow: ["cache-demo"],
+        },
+      },
+    });
+
+    expect(third).not.toBe(first);
+  });
   it("prefers higher-precedence plugins with the same id", () => {
     const bundledDir = makeTempDir();
     writePlugin({

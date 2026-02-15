@@ -41,6 +41,7 @@ import { startDiagnosticHeartbeat, stopDiagnosticHeartbeat } from "../logging/di
 import { createSubsystemLogger, runtimeForLogger } from "../logging/subsystem.js";
 import { getGlobalHookRunner, runGlobalGatewayStopSafely } from "../plugins/hook-runner-global.js";
 import { createEmptyPluginRegistry } from "../plugins/registry.js";
+import { reloadOpenClawPlugins } from "../plugins/reloader.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
 import { getTotalQueueSize } from "../process/command-queue.js";
 import type { RuntimeEnv } from "../runtime.js";
@@ -645,6 +646,26 @@ export async function startGatewayServer(
     }
   }
 
+  const onSigusr2 = () => {
+    try {
+      const nextConfig = loadConfig();
+      reloadOpenClawPlugins({
+        config: nextConfig,
+        workspaceDir: defaultWorkspaceDir,
+        logger: {
+          info: (msg) => logPlugins.info(msg),
+          warn: (msg) => logPlugins.warn(msg),
+          error: (msg) => logPlugins.error(msg),
+          debug: (msg) => logPlugins.debug(msg),
+        },
+        coreGatewayHandlers,
+      });
+    } catch (err) {
+      logPlugins.error(`[plugins] hot-reload failed: ${String(err)}`);
+    }
+  };
+  process.on("SIGUSR2", onSigusr2);
+
   const configReloader = minimalTestGateway
     ? { stop: async () => {} }
     : (() => {
@@ -731,6 +752,7 @@ export async function startGatewayServer(
       skillsChangeUnsub();
       authRateLimiter?.dispose();
       channelHealthMonitor?.stop();
+      process.off("SIGUSR2", onSigusr2);
       await close(opts);
     },
   };
