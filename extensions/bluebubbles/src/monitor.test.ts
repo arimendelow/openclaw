@@ -2026,7 +2026,14 @@ describe("BlueBubbles webhook monitor", () => {
       expect(callArgs.ctx.ReplyToSender).toBe("+15550000000");
       // Verify attachment metadata is included
       expect(callArgs.ctx.ReplyToAttachmentCount).toBe(1);
-      expect(callArgs.ctx.ReplyToMediaTypes).toContain("image/png");
+      expect(callArgs.ctx.ReplyToMediaTypes).toContain("image/jpeg"); // mockSaveMediaBuffer returns image/jpeg
+      // Verify that media paths and URLs are downloaded and populated
+      expect(callArgs.ctx.ReplyToMediaPaths).toBeDefined();
+      expect(callArgs.ctx.ReplyToMediaPaths).toHaveLength(1);
+      expect(callArgs.ctx.ReplyToMediaPaths?.[0]).toBe("/tmp/test-media.jpg");
+      expect(callArgs.ctx.ReplyToMediaUrls).toBeDefined();
+      expect(callArgs.ctx.ReplyToMediaUrls).toHaveLength(1);
+      expect(callArgs.ctx.ReplyToMediaUrls?.[0]).toBe("/tmp/test-media.jpg");
     });
 
     it("handles replies with multiple attachments", async () => {
@@ -2090,9 +2097,18 @@ describe("BlueBubbles webhook monitor", () => {
       expect(mockDispatchReplyWithBufferedBlockDispatcher).toHaveBeenCalled();
       const callArgs = getFirstDispatchCall();
       expect(callArgs.ctx.ReplyToAttachmentCount).toBe(3);
-      expect(callArgs.ctx.ReplyToMediaTypes).toContain("image/jpeg");
-      expect(callArgs.ctx.ReplyToMediaTypes).toContain("application/pdf");
-      expect(callArgs.ctx.ReplyToMediaTypes).toContain("video/quicktime");
+      // Media types should be populated from downloaded content
+      expect(callArgs.ctx.ReplyToMediaTypes).toBeDefined();
+      expect(callArgs.ctx.ReplyToMediaTypes).toHaveLength(3);
+      // All should have the mocked content type
+      expect(callArgs.ctx.ReplyToMediaTypes?.[0]).toBe("image/jpeg");
+      expect(callArgs.ctx.ReplyToMediaTypes?.[1]).toBe("image/jpeg");
+      expect(callArgs.ctx.ReplyToMediaTypes?.[2]).toBe("image/jpeg");
+      // Verify that media paths and URLs are downloaded and populated
+      expect(callArgs.ctx.ReplyToMediaPaths).toBeDefined();
+      expect(callArgs.ctx.ReplyToMediaPaths).toHaveLength(3);
+      expect(callArgs.ctx.ReplyToMediaUrls).toBeDefined();
+      expect(callArgs.ctx.ReplyToMediaUrls).toHaveLength(3);
     });
 
     it("does not include attachment metadata when reply has no attachments", async () => {
@@ -2139,6 +2155,217 @@ describe("BlueBubbles webhook monitor", () => {
       // Should not have attachment metadata fields
       expect(callArgs.ctx.ReplyToAttachmentCount).toBeUndefined();
       expect(callArgs.ctx.ReplyToMediaTypes).toBeUndefined();
+      expect(callArgs.ctx.ReplyToMediaPaths).toBeUndefined();
+      expect(callArgs.ctx.ReplyToMediaUrls).toBeUndefined();
+    });
+
+    it("downloads reply-to attachments and populates media paths/urls", async () => {
+      const { downloadBlueBubblesAttachment } = await import("./attachments.js");
+      const account = createMockAccount({ dmPolicy: "open" });
+      const config: OpenClawConfig = {};
+      const core = createMockRuntime();
+      setBlueBubblesRuntime(core);
+
+      unregister = registerBlueBubblesWebhookTarget({
+        account,
+        config,
+        runtime: { log: vi.fn(), error: vi.fn() },
+        core,
+        path: "/bluebubbles-webhook",
+      });
+
+      // Mock downloadBlueBubblesAttachment to be called for attachments
+      const mockDownload = vi.fn().mockResolvedValue({
+        buffer: Buffer.from("test-image-data"),
+        contentType: "image/png",
+      });
+      vi.mocked(downloadBlueBubblesAttachment).mockImplementation(mockDownload);
+
+      const payload = {
+        type: "new-message",
+        data: {
+          text: "What's in this?",
+          handle: { address: "+15551234567" },
+          isGroup: false,
+          isFromMe: false,
+          guid: "msg-reply",
+          chatGuid: "iMessage;-;+15551234567",
+          replyTo: {
+            guid: "msg-with-image",
+            text: "Check out my screenshot",
+            handle: { address: "+15550000000" },
+            attachments: [
+              {
+                guid: "att-screenshot",
+                mimeType: "image/png",
+                transferName: "screenshot.png",
+                totalBytes: 524288,
+              },
+            ],
+          },
+          date: Date.now(),
+        },
+      };
+
+      const req = createMockRequest("POST", "/bluebubbles-webhook", payload);
+      const res = createMockResponse();
+
+      await handleBlueBubblesWebhookRequest(req, res);
+      await flushAsync();
+
+      // Verify downloadBlueBubblesAttachment was called for the reply attachment
+      expect(mockDownload).toHaveBeenCalledWith(
+        expect.objectContaining({
+          guid: "att-screenshot",
+          mimeType: "image/png",
+        }),
+        expect.objectContaining({
+          cfg: config,
+          accountId: account.accountId,
+        }),
+      );
+
+      // Verify saveMediaBuffer was called with the downloaded attachment
+      expect(mockSaveMediaBuffer).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        "image/png",
+        "inbound",
+        expect.any(Number),
+      );
+
+      // Verify the dispatch received the media paths and URLs
+      expect(mockDispatchReplyWithBufferedBlockDispatcher).toHaveBeenCalled();
+      const callArgs = getFirstDispatchCall();
+      expect(callArgs.ctx.ReplyToMediaPaths).toEqual(["/tmp/test-media.jpg"]);
+      expect(callArgs.ctx.ReplyToMediaUrls).toEqual(["/tmp/test-media.jpg"]);
+      expect(callArgs.ctx.ReplyToMediaTypes).toEqual(["image/jpeg"]);
+    });
+
+    it("skips reply-to attachment download when missing serverUrl/password", async () => {
+      const { downloadBlueBubblesAttachment } = await import("./attachments.js");
+      const account = createMockAccount({ dmPolicy: "open" });
+      // Remove serverUrl/password to trigger skip
+      const accountWithoutCreds = {
+        ...account,
+        config: { ...account.config, serverUrl: undefined, password: undefined },
+      };
+      const config: OpenClawConfig = {};
+      const core = createMockRuntime();
+      setBlueBubblesRuntime(core);
+
+      const mockLogVerbose = vi.fn();
+
+      unregister = registerBlueBubblesWebhookTarget({
+        account: accountWithoutCreds,
+        config,
+        runtime: { log: mockLogVerbose, error: vi.fn() },
+        core,
+        path: "/bluebubbles-webhook",
+      });
+
+      const payload = {
+        type: "new-message",
+        data: {
+          text: "What's in this?",
+          handle: { address: "+15551234567" },
+          isGroup: false,
+          isFromMe: false,
+          guid: "msg-reply",
+          chatGuid: "iMessage;-;+15551234567",
+          replyTo: {
+            guid: "msg-with-image",
+            text: "Check out my screenshot",
+            handle: { address: "+15550000000" },
+            attachments: [
+              {
+                guid: "att-screenshot",
+                mimeType: "image/png",
+                transferName: "screenshot.png",
+                totalBytes: 524288,
+              },
+            ],
+          },
+          date: Date.now(),
+        },
+      };
+
+      const req = createMockRequest("POST", "/bluebubbles-webhook", payload);
+      const res = createMockResponse();
+
+      await handleBlueBubblesWebhookRequest(req, res);
+      await flushAsync();
+
+      // Verify downloadBlueBubblesAttachment was NOT called
+      expect(vi.mocked(downloadBlueBubblesAttachment)).not.toHaveBeenCalled();
+
+      // Verify dispatch still happened but without media paths/urls
+      expect(mockDispatchReplyWithBufferedBlockDispatcher).toHaveBeenCalled();
+      const callArgs = getFirstDispatchCall();
+      expect(callArgs.ctx.ReplyToMediaPaths).toBeUndefined();
+      expect(callArgs.ctx.ReplyToMediaUrls).toBeUndefined();
+      expect(callArgs.ctx.ReplyToAttachmentCount).toBe(1);
+    });
+
+    it("handles reply-to attachment download errors gracefully", async () => {
+      const { downloadBlueBubblesAttachment } = await import("./attachments.js");
+      const account = createMockAccount({ dmPolicy: "open" });
+      const config: OpenClawConfig = {};
+      const core = createMockRuntime();
+      setBlueBubblesRuntime(core);
+
+      // Mock downloadBlueBubblesAttachment to throw an error
+      const mockDownload = vi.fn().mockRejectedValue(new Error("Network error"));
+      vi.mocked(downloadBlueBubblesAttachment).mockImplementation(mockDownload);
+
+      unregister = registerBlueBubblesWebhookTarget({
+        account,
+        config,
+        runtime: { log: vi.fn(), error: vi.fn() },
+        core,
+        path: "/bluebubbles-webhook",
+      });
+
+      const payload = {
+        type: "new-message",
+        data: {
+          text: "What's in this?",
+          handle: { address: "+15551234567" },
+          isGroup: false,
+          isFromMe: false,
+          guid: "msg-reply",
+          chatGuid: "iMessage;-;+15551234567",
+          replyTo: {
+            guid: "msg-with-image",
+            text: "Check out my screenshot",
+            handle: { address: "+15550000000" },
+            attachments: [
+              {
+                guid: "att-screenshot",
+                mimeType: "image/png",
+                transferName: "screenshot.png",
+                totalBytes: 524288,
+              },
+            ],
+          },
+          date: Date.now(),
+        },
+      };
+
+      const req = createMockRequest("POST", "/bluebubbles-webhook", payload);
+      const res = createMockResponse();
+
+      await handleBlueBubblesWebhookRequest(req, res);
+      await flushAsync();
+
+      // Verify download was attempted but failed
+      expect(mockDownload).toHaveBeenCalled();
+
+      // Verify dispatch still happened but without media paths/urls (graceful degradation)
+      expect(mockDispatchReplyWithBufferedBlockDispatcher).toHaveBeenCalled();
+      const callArgs = getFirstDispatchCall();
+      expect(callArgs.ctx.ReplyToMediaPaths).toBeUndefined();
+      expect(callArgs.ctx.ReplyToMediaUrls).toBeUndefined();
+      expect(callArgs.ctx.ReplyToAttachmentCount).toBe(1);
     });
   });
 

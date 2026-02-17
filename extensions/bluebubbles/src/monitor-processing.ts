@@ -456,10 +456,59 @@ export async function processMessage(
       }
     }
   }
+
+  // Download attachments from replied-to message (same logic as regular attachments)
+  let replyToMediaUrls: string[] = [];
+  let replyToMediaPaths: string[] = [];
+  let replyToMediaTypes: string[] = [];
+  let replyToAttachments = message.replyToAttachments;
+  if (replyToAttachments && replyToAttachments.length > 0) {
+    if (!baseUrl || !password) {
+      logVerbose(core, runtime, "replyTo attachment download skipped (missing serverUrl/password)");
+    } else {
+      for (const attachment of replyToAttachments) {
+        if (!attachment.guid) {
+          continue;
+        }
+        if (attachment.totalBytes && attachment.totalBytes > maxBytes) {
+          logVerbose(
+            core,
+            runtime,
+            `replyTo attachment too large guid=${attachment.guid} bytes=${attachment.totalBytes}`,
+          );
+          continue;
+        }
+        try {
+          const downloaded = await downloadBlueBubblesAttachment(attachment, {
+            cfg: config,
+            accountId: account.accountId,
+            maxBytes,
+          });
+          const saved = await core.channel.media.saveMediaBuffer(
+            Buffer.from(downloaded.buffer),
+            downloaded.contentType,
+            "inbound",
+            maxBytes,
+          );
+          replyToMediaPaths.push(saved.path);
+          replyToMediaUrls.push(saved.path);
+          if (saved.contentType) {
+            replyToMediaTypes.push(saved.contentType);
+          }
+        } catch (err) {
+          logVerbose(
+            core,
+            runtime,
+            `replyTo attachment download failed guid=${attachment.guid} err=${String(err)}`,
+          );
+        }
+      }
+    }
+  }
+
   let replyToId = message.replyToId;
   let replyToBody = message.replyToBody;
   let replyToSender = message.replyToSender;
-  let replyToAttachments = message.replyToAttachments;
   let replyToShortId: string | undefined;
 
   if (isTapbackMessage && tapbackContext?.replyToId) {
@@ -687,9 +736,9 @@ export async function processMessage(
     ReplyToBody: replyToBody,
     ReplyToSender: replyToSender,
     ReplyToAttachmentCount: replyToAttachments?.length,
-    ReplyToMediaTypes: replyToAttachments
-      ?.map((a) => a.mimeType)
-      .filter((m): m is string => m !== undefined),
+    ReplyToMediaPaths: replyToMediaPaths.length > 0 ? replyToMediaPaths : undefined,
+    ReplyToMediaUrls: replyToMediaUrls.length > 0 ? replyToMediaUrls : undefined,
+    ReplyToMediaTypes: replyToMediaTypes.length > 0 ? replyToMediaTypes : undefined,
     GroupSubject: groupSubject,
     GroupMembers: groupMembers,
     SenderName: message.senderName || undefined,
