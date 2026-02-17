@@ -1970,6 +1970,176 @@ describe("BlueBubbles webhook monitor", () => {
       const callArgs = getFirstDispatchCall();
       expect(callArgs.ctx.ReplyToId).toBe("msg-0");
     });
+
+    it("includes attachment metadata from replied-to message", async () => {
+      const account = createMockAccount({ dmPolicy: "open" });
+      const config: OpenClawConfig = {};
+      const core = createMockRuntime();
+      setBlueBubblesRuntime(core);
+
+      unregister = registerBlueBubblesWebhookTarget({
+        account,
+        config,
+        runtime: { log: vi.fn(), error: vi.fn() },
+        core,
+        path: "/bluebubbles-webhook",
+      });
+
+      const payload = {
+        type: "new-message",
+        data: {
+          text: "What's in this image?",
+          handle: { address: "+15551234567" },
+          isGroup: false,
+          isFromMe: false,
+          guid: "msg-2",
+          chatGuid: "iMessage;-;+15551234567",
+          replyTo: {
+            guid: "msg-1",
+            text: "Check this out",
+            handle: { address: "+15550000000" },
+            attachments: [
+              {
+                guid: "att-1",
+                mimeType: "image/png",
+                transferName: "screenshot.png",
+                totalBytes: 524288,
+                width: 1920,
+                height: 1080,
+              },
+            ],
+          },
+          date: Date.now(),
+        },
+      };
+
+      const req = createMockRequest("POST", "/bluebubbles-webhook", payload);
+      const res = createMockResponse();
+
+      await handleBlueBubblesWebhookRequest(req, res);
+      await flushAsync();
+
+      expect(mockDispatchReplyWithBufferedBlockDispatcher).toHaveBeenCalled();
+      const callArgs = getFirstDispatchCall();
+      expect(callArgs.ctx.ReplyToId).toBe("msg-1");
+      expect(callArgs.ctx.ReplyToBody).toBe("Check this out");
+      expect(callArgs.ctx.ReplyToSender).toBe("+15550000000");
+      // Verify attachment metadata is included
+      expect(callArgs.ctx.ReplyToAttachmentCount).toBe(1);
+      expect(callArgs.ctx.ReplyToMediaTypes).toContain("image/png");
+    });
+
+    it("handles replies with multiple attachments", async () => {
+      const account = createMockAccount({ dmPolicy: "open" });
+      const config: OpenClawConfig = {};
+      const core = createMockRuntime();
+      setBlueBubblesRuntime(core);
+
+      unregister = registerBlueBubblesWebhookTarget({
+        account,
+        config,
+        runtime: { log: vi.fn(), error: vi.fn() },
+        core,
+        path: "/bluebubbles-webhook",
+      });
+
+      const payload = {
+        type: "new-message",
+        data: {
+          text: "Review these files",
+          handle: { address: "+15551234567" },
+          isGroup: false,
+          isFromMe: false,
+          guid: "msg-3",
+          chatGuid: "iMessage;-;+15551234567",
+          replyTo: {
+            guid: "msg-2",
+            text: "Here are the documents",
+            handle: { address: "+15550000000" },
+            attachments: [
+              {
+                guid: "att-1",
+                mimeType: "image/jpeg",
+                transferName: "photo1.jpg",
+                totalBytes: 1048576,
+              },
+              {
+                guid: "att-2",
+                mimeType: "application/pdf",
+                transferName: "document.pdf",
+                totalBytes: 2097152,
+              },
+              {
+                guid: "att-3",
+                mimeType: "video/quicktime",
+                transferName: "video.mov",
+                totalBytes: 5242880,
+              },
+            ],
+          },
+          date: Date.now(),
+        },
+      };
+
+      const req = createMockRequest("POST", "/bluebubbles-webhook", payload);
+      const res = createMockResponse();
+
+      await handleBlueBubblesWebhookRequest(req, res);
+      await flushAsync();
+
+      expect(mockDispatchReplyWithBufferedBlockDispatcher).toHaveBeenCalled();
+      const callArgs = getFirstDispatchCall();
+      expect(callArgs.ctx.ReplyToAttachmentCount).toBe(3);
+      expect(callArgs.ctx.ReplyToMediaTypes).toContain("image/jpeg");
+      expect(callArgs.ctx.ReplyToMediaTypes).toContain("application/pdf");
+      expect(callArgs.ctx.ReplyToMediaTypes).toContain("video/quicktime");
+    });
+
+    it("does not include attachment metadata when reply has no attachments", async () => {
+      const account = createMockAccount({ dmPolicy: "open" });
+      const config: OpenClawConfig = {};
+      const core = createMockRuntime();
+      setBlueBubblesRuntime(core);
+
+      unregister = registerBlueBubblesWebhookTarget({
+        account,
+        config,
+        runtime: { log: vi.fn(), error: vi.fn() },
+        core,
+        path: "/bluebubbles-webhook",
+      });
+
+      const payload = {
+        type: "new-message",
+        data: {
+          text: "Replying to text",
+          handle: { address: "+15551234567" },
+          isGroup: false,
+          isFromMe: false,
+          guid: "msg-4",
+          chatGuid: "iMessage;-;+15551234567",
+          replyTo: {
+            guid: "msg-3",
+            text: "Just a text message",
+            handle: { address: "+15550000000" },
+          },
+          date: Date.now(),
+        },
+      };
+
+      const req = createMockRequest("POST", "/bluebubbles-webhook", payload);
+      const res = createMockResponse();
+
+      await handleBlueBubblesWebhookRequest(req, res);
+      await flushAsync();
+
+      expect(mockDispatchReplyWithBufferedBlockDispatcher).toHaveBeenCalled();
+      const callArgs = getFirstDispatchCall();
+      expect(callArgs.ctx.ReplyToBody).toBe("Just a text message");
+      // Should not have attachment metadata fields
+      expect(callArgs.ctx.ReplyToAttachmentCount).toBeUndefined();
+      expect(callArgs.ctx.ReplyToMediaTypes).toBeUndefined();
+    });
   });
 
   describe("tapback text parsing", () => {

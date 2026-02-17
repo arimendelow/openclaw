@@ -121,6 +121,7 @@ function extractReplyMetadata(message: Record<string, unknown>): {
   replyToId?: string;
   replyToBody?: string;
   replyToSender?: string;
+  replyToAttachments?: BlueBubblesAttachment[];
 } {
   const replyRaw =
     message["replyTo"] ??
@@ -182,10 +183,14 @@ function extractReplyMetadata(message: Record<string, unknown>): {
       ? threadOriginatorGuid
       : undefined;
 
+  // Extract attachment metadata from replied-to message
+  const replyToAttachments = replyRecord ? extractAttachments(replyRecord) : [];
+
   return {
     replyToId: (replyToId ?? fallbackReplyId)?.trim() || undefined,
     replyToBody: replyToBody?.trim() || undefined,
     replyToSender: normalizedSender || undefined,
+    replyToAttachments: replyToAttachments.length > 0 ? replyToAttachments : undefined,
   };
 }
 
@@ -469,6 +474,7 @@ export type NormalizedWebhookMessage = {
   replyToId?: string;
   replyToBody?: string;
   replyToSender?: string;
+  replyToAttachments?: BlueBubblesAttachment[];
 };
 
 export type NormalizedWebhookReaction = {
@@ -728,6 +734,7 @@ export function normalizeWebhookMessage(
     replyToId: replyMetadata.replyToId,
     replyToBody: replyMetadata.replyToBody,
     replyToSender: replyMetadata.replyToSender,
+    replyToAttachments: replyMetadata.replyToAttachments,
   };
 }
 

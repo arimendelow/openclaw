@@ -459,6 +459,7 @@ export async function processMessage(
   let replyToId = message.replyToId;
   let replyToBody = message.replyToBody;
   let replyToSender = message.replyToSender;
+  let replyToAttachments = message.replyToAttachments;
   let replyToShortId: string | undefined;
 
   if (isTapbackMessage && tapbackContext?.replyToId) {
@@ -685,6 +686,10 @@ export async function processMessage(
     ReplyToIdFull: replyToId,
     ReplyToBody: replyToBody,
     ReplyToSender: replyToSender,
+    ReplyToAttachmentCount: replyToAttachments?.length,
+    ReplyToMediaTypes: replyToAttachments
+      ?.map((a) => a.mimeType)
+      .filter((m): m is string => m !== undefined),
     GroupSubject: groupSubject,
     GroupMembers: groupMembers,
     SenderName: message.senderName || undefined,

@@ -59,6 +59,14 @@ export type MsgContext = {
   ReplyToBody?: string;
   ReplyToSender?: string;
   ReplyToIsQuote?: boolean;
+  /** Attachment file paths from the replied-to message. */
+  ReplyToMediaPaths?: string[];
+  /** Attachment URLs from the replied-to message. */
+  ReplyToMediaUrls?: string[];
+  /** MIME types of attachments from the replied-to message. */
+  ReplyToMediaTypes?: string[];
+  /** Count of attachments in the replied-to message. */
+  ReplyToAttachmentCount?: number;
   ForwardedFrom?: string;
   ForwardedFromType?: string;
   ForwardedFromId?: string;
