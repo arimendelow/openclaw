@@ -88,7 +88,14 @@ export async function runAgentTurnWithFallback(params: {
   const directlySentBlockKeys = new Set<string>();
 
   const runId = params.opts?.runId ?? crypto.randomUUID();
-  params.opts?.onAgentRunStart?.(runId);
+  let didNotifyAgentRunStart = false;
+  const notifyAgentRunStart = () => {
+    if (didNotifyAgentRunStart) {
+      return;
+    }
+    didNotifyAgentRunStart = true;
+    params.opts?.onAgentRunStart?.(runId);
+  };
   if (params.sessionKey) {
     registerAgentRunContext(runId, {
       sessionKey: params.sessionKey,
@@ -104,13 +111,7 @@ export async function runAgentTurnWithFallback(params: {
 
   while (true) {
     try {
-      const allowPartialStream = !(
-        params.followupRun.run.reasoningLevel === "stream" && params.opts?.onReasoningStream
-      );
       const normalizeStreamingText = (payload: ReplyPayload): { text?: string; skip: boolean } => {
-        if (!allowPartialStream) {
-          return { skip: true };
-        }
         let text = payload.text;
         if (!params.isHeartbeat && text?.includes("HEARTBEAT_OK")) {
           const stripped = stripHeartbeatToken(text, {
@@ -166,6 +167,7 @@ export async function runAgentTurnWithFallback(params: {
 
           if (isCliProvider(provider, params.followupRun.run.config)) {
             const startedAt = Date.now();
+            notifyAgentRunStart();
             emitAgentEvent({
               runId,
               stream: "lifecycle",
@@ -290,18 +292,16 @@ export async function runAgentTurnWithFallback(params: {
             abortSignal: params.opts?.abortSignal,
             blockReplyBreak: params.resolvedBlockStreamingBreak,
             blockReplyChunking: params.blockReplyChunking,
-            onPartialReply: allowPartialStream
-              ? async (payload) => {
-                  const textForTyping = await handlePartialForTyping(payload);
-                  if (!params.opts?.onPartialReply || textForTyping === undefined) {
-                    return;
-                  }
-                  await params.opts.onPartialReply({
-                    text: textForTyping,
-                    mediaUrls: payload.mediaUrls,
-                  });
-                }
-              : undefined,
+            onPartialReply: async (payload) => {
+              const textForTyping = await handlePartialForTyping(payload);
+              if (!params.opts?.onPartialReply || textForTyping === undefined) {
+                return;
+              }
+              await params.opts.onPartialReply({
+                text: textForTyping,
+                mediaUrls: payload.mediaUrls,
+              });
+            },
             onAssistantMessageStart: async () => {
               await params.typingSignals.signalMessageStart();
               await params.opts?.onAssistantMessageStart?.();
@@ -318,6 +318,12 @@ export async function runAgentTurnWithFallback(params: {
                 : undefined,
             onReasoningEnd: params.opts?.onReasoningEnd,
             onAgentEvent: async (evt) => {
+              // Signal run start only after the embedded agent emits real activity.
+              const hasLifecyclePhase =
+                evt.stream === "lifecycle" && typeof evt.data.phase === "string";
+              if (evt.stream !== "lifecycle" || hasLifecyclePhase) {
+                notifyAgentRunStart();
+              }
               // Trigger typing when tools start executing.
               // Must await to ensure typing indicator starts before tool summaries are emitted.
               if (evt.stream === "tool") {
